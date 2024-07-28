@@ -23,11 +23,12 @@ const client = {
 //  - In case of sklik, heureka_cz and heureka_sk (probably cj_affiliate as well), only one property_id will be present in platform data
 const projects = {
     ga4: [
-        {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'},
-        {property_id: '123', project_id: '321', project_name: 'monkeymum_sk'}
+        {property_id: '123', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz'},
+        // {property_id: '123', project_id: '321', project_name: 'monkeymum_sk'}
     ],
     google_ads: [
-        {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
+        {property_id: '4438085976', project_id: undefined, project_name: undefined},
+        // {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
     ],
     sklik: [
         {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
@@ -39,10 +40,10 @@ const projects = {
         {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
     ],
     heureka_cz: [
-        {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
+        {property_id: 'b3a277632ca7b1f67901d293e21f6e2d', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz'}
     ],
     heureka_sk: [
-        {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
+        {property_id: '4a107449e02fa5adee21d5d7abfa3076', project_id: 'monkeymum_sk', project_name: 'monkeymum_sk'}
     ],
     cj_affiliate: [
         // {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}

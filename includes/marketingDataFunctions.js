@@ -5,7 +5,7 @@
 function joinGA4MetaAndBaseTable(clientConfig) {
     const database = clientConfig.inputDataGcpProject || 'niftyminds-client-reporting';
     const outSchema = 'l1_ga4_ecomm_session_sources';
-    const outTableName = helperFuncs.createTableName(clientConfig.id, clientConfig.name, "out");
+    const outTableName = helperFuncs.createTableName(clientConfig.id, clientConfig.name, "ga4_ecomm_session_sources");
     const inputSuffixes = ['ecomm_session_sources', 'meta'];
     
     return publish(outTableName, {
@@ -19,7 +19,8 @@ function joinGA4MetaAndBaseTable(clientConfig) {
         SELECT 
             *
         FROM 
-            \`${createInputTableName(database, `l0_ga4_${inputSuffixes[0]}`, clientConfig.name)}\` as ecomm_session_sources
+            -- \`${createInputTableName(database, `l0_ga4_${inputSuffixes[0]}`, clientConfig.name)}\` as ecomm_session_sources
+            ${ctx.ref(`vw_l0_ga4_${inputSuffixes[0]}_${clientConfig.name}`)} as ecomm_session_sources
         LEFT JOIN (
             SELECT 
                 SAFE_CAST(SPLIT(property_key, '/')[SAFE_OFFSET(1)] as INT64) as property_id,
@@ -27,9 +28,15 @@ function joinGA4MetaAndBaseTable(clientConfig) {
                 SAFE_CAST(SPLIT(property_key, '/')[SAFE_OFFSET(1)] as INT64) as account_key,
                 account_name
             FROM 
-               \`${createInputTableName(database, `l0_ga4_${inputSuffixes[1]}`, clientConfig.name)}\`
+               -- \`${createInputTableName(database, `l0_ga4_${inputSuffixes[1]}`, clientConfig.name)}\`
+               ${ctx.ref(`vw_l0_ga4_${inputSuffixes[1]}_${clientConfig.name}`)}
         ) USING (property_id )
     `);
+}
+
+function addProjectIdToCampaignsTable(clientConfig) {
+    const database = helperFuncs.getDatabaseName(clientConfig.project);
+    const schema = `l2_`
 }
 
 /* 
@@ -56,33 +63,71 @@ function createInputTableName(database, schema, name) {
     return `${database}.${schema}.${name}`;
 }
 
-function declareInputTables(clientConfig) {
-    return clientConfig.platforms.forEach((platform) => {
+function declareInputTables(clientConfig, campaignData = true) {
+    const queries = [];
+    let platforms;
+    if (campaignData === true) {
+        platforms = clientConfig.platforms.filter(p => p !== 'ga4');
+    } else {
+        platforms = ['ecomm_session_sources', 'meta'];
+    }
+
+    platforms.forEach((platform) => {
         const database = clientConfig.project || 'niftyminds-client-reporting';
-        let schema = `l0_${platform}_campaigns`;
+        let schema = campaignData === true ? `l0_${platform}_campaigns` : `l0_ga4_${platform}`;
         let name = `${clientConfig.name}`; // `${clientConfig.name}_${clientConfig.id}`
 
-        // google_ads - temporary solution
-        if (platform === 'google_ads') name = 'niftyminds_mcc'; 
+        // temperaty solution for google ads where data are currently not possible to query for monkeymum_com account / client
+        if (platform === 'google_ads') name = 'niftyminds_mcc';
 
-        if (platform === 'ga4') {
-            const ga4Suffixes = ['ecomm_session_sources', 'meta'];
-            ga4Suffixes.forEach(suffix => {
-                schema = `l0_${platform}_${suffix}`;
-                declare({
-                    database: database,
-                    schema: schema,
-                    name: `${schema}_${name}`
-                });
-            })
-        } else {
-            declare({
-                database: clientConfig.project || 'niftyminds-client-reporting',
-                schema: schema,
-                name: `${schema}_${name}` // `${clientConfig.name}_${clientConfig.id}` 
-            });
-        }
-    })
+        queries.push(
+            publish(`vw_${schema}_${name}`, {
+                type: 'view',
+                database: database,
+                schema: 'l0_helper_views',
+                name: name
+            }).query(ctx => `SELECT * FROM \`${database}.${schema}.${name}\``)
+        )
+
+        // // google_ads - temporary solution
+        // if (platform === 'google_ads') name = 'niftyminds_mcc'; 
+
+        // if (platform === 'ga4') {
+        //     // const ga4Suffixes = ['ecomm_session_sources', 'meta'];
+        //     const ga4Suffixes = ['meta', 'tvojtatko']
+
+        //     return ga4Suffixes.map(suffix => {
+        //         schema = `l0_${platform}_${suffix}`;
+                
+        //         return publish(`vw_${schema}_${name}`, {
+        //             type: 'view',
+        //             database: database,
+        //             schema: 'l0_helper_views',
+        //             name: name
+        //         }).query(ctx => `SELECT * FROM \`${database}.${schema}.${name}\``)
+        //         // declare({
+        //         //     database: database,
+        //         //     schema: schema,
+        //         //     name: `${schema}_${name}`
+        //         // });
+        //     })
+        // } else {
+        //     publish(`vw_${schema}_${name}`, {
+        //             type: 'view',
+        //             database: database,
+        //             schema: 'l0_helper_views',
+        //             name: name
+        //     }).query(ctx => `SELECT * FROM \`${database}.${schema}.${name}\``)
+        //     // declare({
+        //     //     database: clientConfig.project || 'niftyminds-client-reporting',
+        //     //     schema: schema,
+        //     //     name: `${schema}_${name}` // `${clientConfig.name}_${clientConfig.id}` 
+        //     // });
+        // }
+    });
+
+
+    return queries;
 }
 
 function addHeurekaCurrency(platform) {
@@ -129,7 +174,7 @@ function joinCampaignData(ctx, clientConfig, database) {
             SELECT 
                 date,
                 '${platform}' as platform_name,
-                platform_account_id,
+                CAST(platform_account_id as STRING) as platform_account_id,
                 ${!columnMappings.platformColumns[platform].includes('platform_account_name') ? addHeurekaPlatformAccountName(platform, clientConfig.name) : 'platform_account_name'} as platform_account_name,
                 ${!columnMappings.platformColumns[platform].includes('currency_code') ? addHeurekaCurrency(platform) : 'currency_code'} as currency_code,
                 ${!columnMappings.platformColumns[platform].includes('campaign_name') ? `NULL` : 'campaign_name'} as campaign_name,
@@ -140,19 +185,21 @@ function joinCampaignData(ctx, clientConfig, database) {
                 conversions,
                 conversion_value,
             FROM 
-                \`${database}.l0_${platform}_campaigns.${tableName}\`
+                -- \`${database}.l0_${platform}_campaigns.${tableName}\`
+                ${ctx.ref(`vw_l0_${platform}_campaigns_${tableName}`)}
         `;
     });
 
     return query.slice(1).join('  UNION ALL  ');
 }
 
-function createL1CampaignTable(clientConfig) {
+function createL1CampaignsTable(clientConfig) {
     const database = clientConfig.project || 'niftyminds-client-reporting';
     let schema = `l1_campaigns`;
-    const name = `${clientConfig.name}`; // `${clientConfig.name}_${clientConfig.id}`
+    const name = `${clientConfig.name}_campaigns_joined`; // `${clientConfig.name}_${clientConfig.id}`
     
     return publish(name, {
+        type: 'table',
         database: database,
         schema: schema
     })
@@ -163,5 +210,6 @@ module.exports = {
     joinGA4MetaAndBaseTable,
     addSourceMediumCampaign,
     declareInputTables,
-    createL1CampaignTable
+    createL1CampaignsTable
+    // joinCampaignData
 }

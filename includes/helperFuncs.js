@@ -1,19 +1,26 @@
 /*
     tableType:
         - "outPlatform": is always the same in format: "<client_name>_<client_id>_<platform>"
-        - "ga4_meta": "<client_name>_<client_id>_properties_meta"
         - "ga4_ecomm_session_sources": "<client_name>_<client_id>_ecomm_session_sources"
 */
 function createTableName(clientId, clientName, tableType) {
-    const baseTableName = `${clientId, clientName}`;
-    if (tableType === "out") return baseTableName;
+    // const baseTableName = `${clientId}_${clientName}`;
+    const baseTableName = `${clientName}`; // clientId is omitted 
+
+    if (tableType === "l0") return;
+    if (tableType === "l1_campaigns") return `${baseTableName}_joined`;
     if (tableType.includes("ga4")) {
-        const splited = ga4.split('_')[1];
-        
-        return baseTableName + splited;
+        // const splited = tableType.split('_');
+        // const splitedTableName = splited.slice(1).join('_');
+
+        return `${baseTableName}_add_property_account_name`;
     }
     
     // TODO
+}
+
+function getDatabaseName(project) {
+    return project || 'niftyminds-client-reporting';
 }
 
 function createGlobalConfigs(clientId, clientName, out_gcp_project = 'niftyminds-client-reporting') {
@@ -21,6 +28,7 @@ function createGlobalConfigs(clientId, clientName, out_gcp_project = 'niftyminds
 }
 
 module.exports = {
-    createTableName
+    createTableName,
+    getDatabaseName
 }
 
