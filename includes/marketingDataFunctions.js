@@ -206,10 +206,57 @@ function createL1CampaignsTable(clientConfig) {
     .query(ctx => joinCampaignData(ctx, clientConfig, database))
 }
 
+function addProjectIdToCampaignsTable(clientConfig) {
+    const projects = clientConfig.projects;
+    const presentPlatforms = Object.keys(projects).filter(p => clientConfig.platforms.includes(p) && p !== 'ga4');
+    const platformCases = {
+        project_id: [],
+        project_name: []
+    };
+    presentPlatforms.forEach(platform => {
+        const platformProjects = projects[platform];
+        const caseStatementProjectId = platformProjects.map((project) => {
+            let caseProjectId = `when platform_name = '${platform}' and platform_account_id = '${project.property_id}' then '${project.project_id}'`;
+            return caseProjectId;
+        }).join('\n ');
+        const caseStatementProjectName = platformProjects.map((project) => {
+            let caseProjectName = `when platform_name = '${platform}' and platform_account_id = '${project.property_id}' then '${project.project_name}'`;
+            return caseProjectName;
+        }).join('\n ');
+
+        platformCases.project_id.push(caseStatementProjectId);
+        platformCases.project_name.push(caseStatementProjectName);
+    })
+
+    const database = clientConfig.inputDataGcpProject || 'niftminds-client-reporting';
+    const schema = 'l2_campaigns';
+    const name = `${clientConfig.name}_campaigns_with_project_id`;
+    
+    return publish(`vw_${schema}_${name}`, {
+        type: 'view',
+        database: database,
+        schema: 'l2_helper_views',
+    })
+    .query(ctx => `
+        select 
+            *
+        from (
+            select
+                case ${platformCases.project_id.join('\n ')} else null end as project_id, 
+                case ${platformCases.project_name.join('\n ')} else null end as project_name, 
+                *
+            from 
+                ${ctx.ref(name.replace("campaigns_with_project_id", "campaigns_joined"))}
+        )
+        where 
+            project_id is not null
+    `)
+}
+
 module.exports = {
     joinGA4MetaAndBaseTable,
     addSourceMediumCampaign,
     declareInputTables,
-    createL1CampaignsTable
-    // joinCampaignData
+    createL1CampaignsTable,
+    addProjectIdToCampaignsTable
 }
