@@ -43,7 +43,7 @@ const platformColumns = {
         'clicks',
         'cost_origianal_currency',
         'conversions',
-        'conversion_value',
+        'conversion_value_original_currency',
     ],
     heureka_cz: [
         'platform_account_id',
@@ -51,7 +51,7 @@ const platformColumns = {
         'cost_original_currency',
         'cost_original_currency_per_click',
         'conversions',
-        'conversion_value'
+        'conversion_value_original_currency'
     ],
     heureka_sk: [
         'platform_account_id',
@@ -59,7 +59,17 @@ const platformColumns = {
         'cost_original_currency',
         'cost_original_currency_per_click',
         'conversions',
-        'conversion_value'
+        'conversion_value_original_currency'
+    ],
+    facebook: [
+        'date',
+        'platform_account_id',
+        'platform_account_name',
+        'currency_code',
+        'campaign_id',
+        'campaign_name',
+        'conversions',
+        'conversion_value_original_currency'
     ]
 }
 

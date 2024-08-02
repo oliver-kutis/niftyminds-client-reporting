@@ -9,7 +9,7 @@ const client = {
         'ga4',
         'google_ads',
         // 'sklik',
-        // 'facebook',
+        'facebook',
         // 'bing_ads',
         'heureka_cz',
         'heureka_sk',
@@ -32,18 +32,33 @@ const client = {
     //  - In case of sklik, heureka_cz and heureka_sk (probably cj_affiliate as well), only one property_id will be present in platform data
     projects: {
         ga4: [
-            {property_id: '123', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz'},
-            // {property_id: '123', project_id: '321', project_name: 'monkeymum_sk'}
+            { property_id: '327331458', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz' },
+            { property_id: '327379837', project_id: 'monkeymum_de', project_name: 'monkeymum_de' },
+            { property_id: '327373684', project_id: 'monkeymum_en', project_name: 'monkeymum_en' },
+            { property_id: '327364097', project_id: 'monkeymum_es', project_name: 'monkeymum_es' },
+            { property_id: '374115092', project_id: 'monkeymum_fi', project_name: 'monkeymum_fi' },
+            { property_id: '327351271', project_id: 'monkeymum_fr', project_name: 'monkeymum_fr' },
+            { property_id: '348603801', project_id: 'monkeymum_gr', project_name: 'monkeymum_gr' },
+            { property_id: '327335909', project_id: 'monkeymum_hr', project_name: 'monkeymum_hr' },
+            { property_id: '327347972', project_id: 'monkeymum_hu', project_name: 'monkeymum_hu' },
+            { property_id: '327342577', project_id: 'monkeymum_it', project_name: 'monkeymum_it' },
+            { property_id: '327373281', project_id: 'monkeymum_nl', project_name: 'monkeymum_nl' },
+            { property_id: '327374690', project_id: 'monkeymum_pl', project_name: 'monkeymum_pl' },
+            { property_id: '374056600', project_id: 'monkeymum_pt', project_name: 'monkeymum_pt' },
+            { property_id: '327345849', project_id: 'monkeymum_ro', project_name: 'monkeymum_ro' },
+            { property_id: '348618406', project_id: 'monkeymum_se', project_name: 'monkeymum_se' },
+            { property_id: '327338731', project_id: 'monkeymum_sk', project_name: 'monkeymum_sk' },
+            { property_id: '327385365', project_id: 'monkeymum_sl', project_name: 'monkeymum_sl' }
         ],
         google_ads: [
-            {property_id: '4438085976', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz'},
+            {property_id: '4438085976', project_id: 'monkeymum_com', project_name: 'monkeymum_com'},
             // {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
         ],
         sklik: [
             {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
         ],
         facebook: [
-            {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
+            {property_id: '447736129796848', project_id: 'monkeymum_com', project_name: 'monkeymum_com'}
         ],
         bing_ads: [
             {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
