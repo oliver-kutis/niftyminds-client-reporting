@@ -12,7 +12,7 @@ function l0ViewsDefineInputs(clientConfig, campaignData = true) {
             return publish(`vw_${schema}_${name}`, {
                 type: 'view',
                 database: database,
-                schema: 'l0_views_define_inputs',
+                schema: 'views_l0_define_inputs',
                 name: name
             }).query(ctx => `
                 SELECT 
@@ -75,8 +75,7 @@ function l1JoinGA4EcommAndMeta(clientConfig) {
             cast(property_name as string) as platform_property_name,
             cast(account_id as string) as platform_account_id,
             cast(account_name as string) as platform_account_name,
-            '${clientConfig.name}' as client_name,
-            '${clientConfig.id}' as client_id,
+            'ga4_ecomm' as platform_name,
         FROM 
             ${ctx.ref(`vw_l0_ga4_${inputSuffixes[0]}_${clientConfig.name}`)} as ga4_ecomm
         LEFT JOIN (
@@ -111,105 +110,106 @@ function l2ViewsRemoveDuplicates(clientConfig, database, campaigns = true) {
         from (
             select 
                 *,
-                row_number() over (partition by                     
-                    date,
-                    client_id,
-                    client_name,
-                    project_id,
-                    project_name,
-                    platform_name,
-                    currency_code,
-                    ${campaigns === true ? 'campaign_id,' : ''}
-                    campaign_name,
-                    campaign_name_join,
-                    ${campaigns === true ? 'cost_original_currency,' : ''}
-                    ${campaigns === true ? 'clicks,' : ''}
-                    ${campaigns === true ? 'impressions,' : ''}
-                    ${campaigns === true ? 'conversions,' : 'transactions,'}
-                    ${campaigns === true ? 'conversion_value_original_currency,' : 'revenue_original_currency,'}
-
+                row_number() over (
+                    partition by                     
+                        date,
+                        client_id,
+                        client_name,
+                        project_id,
+                        project_name,
+                        platform_name,
+                        currency_code,
+                        ${campaigns === true ? 'campaign_id,' : ''}
+                        campaign_name,
+                        campaign_name_join,
+                        ${campaigns === true ? 'CAST(cost_original_currency as string),' : ''}
+                        ${campaigns === true ? 'CAST(clicks as string),' : ''}
+                        ${campaigns === true ? 'CAST(impressions as string),' : ''}
+                        ${campaigns === true ? 'CAST(conversions as string),' : 'CAST(transactions as string),'}
+                        ${campaigns === true ? 'CAST(conversion_value_original_currency as string)' : 'CAST(revenue_original_currency as string)'}
                     order by 
                         date
                 ) as rn    
-                -- count(*) as duplicates,
             from 
-                ${ctx.ref(`l0_${campaigns === true ? 'campaigns' : 'ga4_ecomm'}_${clientConfig.name}`)}
+                ${ctx.ref(`vw_l2_add_join_columns_${campaigns === true ? 'campaigns' : 'ga4_ecomm'}_${clientConfig.name}`)}
         )
         where rn = 1
     `
 
-    return publish(`vw_l2_${campaigns === true ? 'campaigns' : 'ga4_ecomm'}_${clientConfig.name}`, {
+    return publish(`vw_l2_remove_duplicates_${campaigns === true ? 'campaigns' : 'ga4_ecomm'}_${clientConfig.name}`, {
         type: 'view',
         database: database,
-        schema: 'l2_remove_duplicates'
+        schema: 'views_l2_remove_duplicates'
     }).query(ctx => getQuery(ctx));
 }
 
-function l2HelperViews(clientConfig, campaigns = true) {
+function l2ViewsAddJoinColumns(clientConfig, campaigns = true) {
+    // Extract projects and database information from client configuration
     const projects = clientConfig.projects;
     const database = clientConfig.inputDataGcpProject || 'niftminds-client-reporting';
-    // varying variablews
-    let presentPlatforms = [];
-    let propertyIdKey = ``;
-    let platformNameCondition = ``;
-    let schema = '';
-    let refName = ``;
-    let name = `${clientConfig.name}`;
 
-    if (campaigns) {
-        presentPlatforms = Object.keys(projects).filter(p => clientConfig.platforms.includes(p) && p !== 'ga4');
-        propertyIdKey = 'platform_account_id';
-        // platformNameCondition = `platform_name = '${platform}'`;
-        schema = `l2_campaigns_${clientConfig.name}`;
-        refName = `l1_campaigns_${clientConfig.name}`;
-    } else {
-        presentPlatforms = ['ga4'];
-        propertyIdKey = 'platform_property_id';
-        // platformNameCondition = ``;
-        schema = `l2_ga4_ecomm_${clientConfig.name}`;
-        refName = `l1_ga4_ecomm_${clientConfig.name}`
-    }
+    // Determine present platforms and keys based on whether campaigns are true or false
+    const presentPlatforms = campaigns 
+        ? Object.keys(projects).filter(p => clientConfig.platforms.includes(p) && p !== 'ga4')
+        : ['ga4'];
+    const propertyIdKey = campaigns ? 'platform_account_id' : 'platform_property_id';
+    const schemaPrefix = campaigns ? 'l2_add_join_columns_campaigns_' : 'l2_add_join_columns_ga4_ecomm_';
+    const refNamePrefix = campaigns ? 'l1_campaigns_' : 'l1_ga4_ecomm_';
+    // Define schema and reference name based on client configuration name
+    const schema = `${schemaPrefix}${clientConfig.name}`;
+    const refName = `${refNamePrefix}${clientConfig.name}`;
 
+    // Initialize an object to store case statements for project IDs and project names
     const platformCases = {
         project_id: [],
         project_name: []
     };
-    presentPlatforms.forEach(platform => {
-        platformNameCondition = campaigns ? `platform_name = '${platform}' and` : ``;
-        const platformProjects = projects[platform];
-        const caseStatementProjectId = platformProjects.map((project) => {
-            let caseProjectId = `when ${platformNameCondition} ${propertyIdKey} = '${project.property_id}' then '${project.project_id}'`;
-            return caseProjectId;
-        }).join('\n ');
-        const caseStatementProjectName = platformProjects.map((project) => {
-            let caseProjectName = `when ${platformNameCondition} ${propertyIdKey} = '${project.property_id}' then '${project.project_name}'`;
-            return caseProjectName;
-        }).join('\n ');
 
+    // Construct case statements for each platform
+    presentPlatforms.forEach(platform => {
+        // Add platform name condition if campaigns are true
+        const platformNameCondition = campaigns ? `platform_name = '${platform}' and` : '';
+        const platformProjects = projects[platform];
+
+        // Construct case statements for project IDs
+        const caseStatementProjectId = platformProjects.map(project =>
+            `when ${platformNameCondition} ${propertyIdKey} = '${project.property_id}' then '${project.project_id}'`
+        ).join('\n ');
+
+        // Construct case statements for project names
+        const caseStatementProjectName = platformProjects.map(project =>
+            `when ${platformNameCondition} ${propertyIdKey} = '${project.property_id}' then '${project.project_name}'`
+        ).join('\n ');
+
+        // Append the constructed case statements to platformCases
         platformCases.project_id.push(caseStatementProjectId);
         platformCases.project_name.push(caseStatementProjectName);
-    })
+    });
 
+
+
+    // Return the SQL query with the constructed case statements
     return publish(`vw_${schema}`, {
-            type: 'view',
-            database: database,
-            schema: 'l2_helper_views',
-        })
-        .query(ctx => `
+        type: 'view',
+        database: database,
+        schema: 'views_l2_add_join_columns',
+    }).query(ctx => `
         select 
             *
         from (
-            select
+            select 
                 ${campaigns === false ? `* replace(${helperFuncs.adjustGa4SourceMedium()}),` : '*,'}
+                '${clientConfig.name}' as client_name,
+                '${clientConfig.id}' as client_id,
                 case ${platformCases.project_id.join('\n ')} else null end as project_id, 
                 case ${platformCases.project_name.join('\n ')} else null end as project_name, 
-                ${helperFuncs.normalizeCampaignName('campaign_name')} as campaign_name_join,
+                ${helperFuncs.normalizeCampaignName('campaign_name')} as campaign_name_join
             from 
                 ${ctx.ref(`${refName}`)}
         )
         where 
             project_id is not null
-    `)
+    `);
 }
 
 function l3JoinGA4AndCampaignData(clientConfig) {
@@ -304,6 +304,6 @@ module.exports = {
     l1JoinGA4EcommAndMeta,
     l1UnionCampaignData,
     l2ViewsRemoveDuplicates,
-    l2HelperViews,
+    l2ViewsAddJoinColumns,
     l3JoinGA4AndCampaignData
 }
