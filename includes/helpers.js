@@ -1,32 +1,3 @@
-/*
-    tableType:
-        - "outPlatform": is always the same in format: "<client_name>_<client_id>_<platform>"
-        - "ga4_ecomm_session_sources": "<client_name>_<client_id>_ecomm_session_sources"
-*/
-function createTableName(clientId, clientName, tableType) {
-    // const baseTableName = `${clientId}_${clientName}`;
-    const baseTableName = `${clientName}`; // clientId is omitted 
-
-    if (tableType === "l0") return;
-    if (tableType === "l1_campaigns") return `${baseTableName}_joined`;
-    if (tableType === "l1_ga4_ecomm") {
-        // const splited = tableType.split('_');
-        // const splitedTableName = splited.slice(1).join('_');
-
-        return `l${baseTableName}`;
-    }
-    
-    // TODO
-}
-
-function getDatabaseName(project) {
-    return project || 'niftyminds-client-reporting';
-}
-
-function createGlobalConfigs(clientId, clientName, out_gcp_project = 'niftyminds-client-reporting') {
-    
-}
-
 function adjustGa4SourceMedium() {
     let source = `
         case 
@@ -59,7 +30,6 @@ function addSourceMediumFromPlatform(platformName) {
     if (platformName === 'sklik') [source, medium] = ['seznam', 'cpc'];
     if (platformName.includes('heureka')) [source, medium] = ['heureka', 'product'];
     if (platformName === 'facebook') [source, medium] = ['facebook', 'cpc'];
-    // if (platformName === '')
     
     return {source: source, medium: medium};
 }
@@ -191,11 +161,14 @@ function getFacebookJoinQuery(ctx, clientName) {
 
 
 module.exports = {
-    createTableName,
-    getDatabaseName,
     adjustGa4SourceMedium,
     addSourceMediumFromPlatform,
     normalizeCampaignName,
-    createUnionForCampaignData
+    addHeurekaCurrency,
+    addHeurekaPlatformAccountName,
+    addClicksColumn,
+    addCostsColumn,
+    createUnionForCampaignData,
+    getFacebookJoinQuery,
 }
 

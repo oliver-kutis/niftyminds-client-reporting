@@ -50,10 +50,10 @@ const client = {
             { property_id: '327338731', project_id: 'monkeymum_sk', project_name: 'monkeymum_sk' },
             { property_id: '327385365', project_id: 'monkeymum_sl', project_name: 'monkeymum_sl' }
         ],
-        google_ads: [
-            {property_id: '4438085976', project_id: 'monkeymum_com', project_name: 'monkeymum_com'},
-            // {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
-        ],
+        google_ads: 'custom',
+        // google_ads: [
+        //     {property_id: '4438085976', project_id: 'monkeymum_com', project_name: 'monkeymum_com'},
+        // ],
         sklik: [
             {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
         ],
