@@ -132,8 +132,14 @@ class Layer1 extends ClientReporting {
                             platform_account_id as platform_account_id,
                             ${!this._campaignsUnionConfig.platformColumns[platform].includes('platform_account_name') ? addHeurekaPlatformAccountName(platform, this._clientName) : 'platform_account_name'} as platform_account_name,
                             ${!this._campaignsUnionConfig.platformColumns[platform].includes('currency_code') ? addHeurekaCurrency(platform) : 'currency_code'} as currency_code,
-                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('campaign_name') ? `NULL` : 'campaign_name'} as campaign_name,
-                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('campaign_id') ? `NULL` : 'campaign_id'} as campaign_id,
+                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('campaign_name') 
+                                ? `concat('${addSourceMediumFromPlatform(platform).source}', '_', '${addSourceMediumFromPlatform(platform).medium}')` 
+                                : 'campaign_name'
+                            } as campaign_name,
+                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('campaign_id') 
+                                ? `ABS(FARM_FINGERPRINT((concat('${addSourceMediumFromPlatform(platform).source}', '_', '${addSourceMediumFromPlatform(platform).medium}'))))` 
+                                : 'campaign_id'
+                            } as campaign_id,
                             ${!this._campaignsUnionConfig.platformColumns[platform].includes('impressions') ? `NULL` : 'impressions'} as impressions,
                             ${addClicksColumn(platform)},
                             ${addCostsColumn(platform)},
@@ -151,29 +157,43 @@ class Layer1 extends ClientReporting {
     unionCampaignData() {
         const {database, schema, name} = this._campaignsUnionConfig;
         return publish(name, {
-            type: 'table',
+            type: 'incremental',
             database: database,
             schema: schema,
-            tags: ['layer_1', 'campaigns']
+            tags: ['layer_1', 'campaigns', 'incremental'],
+            uniqueKey: ['date', 'platform_name', 'platform_account_id', 'source', 'medium', 'campaign_id', 'campaign_name'],
+            bigquery: {
+                partitionBy: 'date',
+                clusterBy: ['platform_name', 'platform_account_id', 'campaign_id']
+            }
         }).query(ctx => this._createUnionForCampaignData(ctx))
     };
 
     joinGa4EcommAndMeta() {
         const {database, schema, name, inputSuffixes} = this._ga4EcommAndMetaJoinConfig;
         return publish(name, {
-                type: 'table',
+                type: 'incremental',
                 database: database,
                 schema: schema,
-                tags: ['layer_1', 'ga4']
+                tags: ['layer_1', 'ga4', 'incremental'],
+                uniqueKey: ['date', 'platform_account_id', 'platform_property_id', 'source', 'medium', 'campaign_name', 'currency_code'],
+                bigquery: {
+                    partitionBy: 'date',
+                    clusterBy: ['platform_account_id', 'platform_property_id', 'source', 'medium']
+                }
             })
             .query(ctx => `
                 SELECT 
-                    * EXCEPT(property_id, property_name, account_id, account_name),
+                    * EXCEPT(property_id, property_name, account_id, account_name, currency_code, sessions, revenue_original_currency, transactions),
+                    'ga4_ecomm' as platform_name,
                     cast(property_id as string) as platform_property_id,
                     cast(property_name as string) as platform_property_name,
                     cast(account_id as string) as platform_account_id,
                     cast(account_name as string) as platform_account_name,
-                    'ga4_ecomm' as platform_name,
+                    ga4_ecomm.currency_code,
+                    sum(sessions) as sessions,
+                    sum(revenue_original_currency) as revenue_original_currency,
+                    sum(transactions) as transactions,
                 FROM 
                     ${ctx.ref(`vw_l0_ga4_${inputSuffixes[0]}_${this._clientName}`)} as ga4_ecomm
                 LEFT JOIN (
@@ -185,6 +205,7 @@ class Layer1 extends ClientReporting {
                     FROM 
                     ${ctx.ref(`vw_l0_ga4_${inputSuffixes[1]}_${this._clientName}`)}
                 ) USING (property_id)
+                group by all
             `);
     }
 }
@@ -270,70 +291,112 @@ class Layer2 extends ClientReporting {
                 schema: 'views_l2_add_join_columns_and_currency_conversion',
                 tags: ['layer_2', `${campaigns === true ? 'campaigns' : 'ga4'}`, 'view']
             }).query(ctx => `
-                select 
-                    base_table.*,
-                    ${
-                        campaigns === true 
-                        ? `case 
-                                when currency_code = 'CZK' THEN cost_original_currency
-                                else SAFE_MULTIPLY(
-                                    SAFE_DIVIDE(cost_original_currency, eur_curr_rate),
-                                    eur_czk_rate
-                                ) 
-                            end as cost_czk, 
-                            case 
-                                when eur_curr_rate is null THEN cost_original_currency
-                                else SAFE_DIVIDE(cost_original_currency, eur_curr_rate) 
-                            end as cost_eur,
-                            case
-                                when currency_code = 'CZK' THEN conversion_value_original_currency
-                                else SAFE_MULTIPLY(
-                                    SAFE_DIVIDE(conversion_value_original_currency, eur_curr_rate),
-                                    eur_czk_rate
-                                ) 
-                            end as conversion_value_czk, 
-                            case 
-                                when eur_curr_rate is null THEN conversion_value_original_currency
-                                else SAFE_DIVIDE(conversion_value_original_currency, eur_curr_rate) 
-                            end as conversion_value_eur,
-                        ` 
-                        : `
-                            case
-                                when currency_code = 'CZK' THEN revenue_original_currency
-                                else SAFE_MULTIPLY(
-                                    SAFE_DIVIDE(revenue_original_currency, eur_curr_rate),
-                                    eur_czk_rate
-                                ) 
-                            end as revenue_czk, 
-                            case 
-                                when eur_curr_rate is null THEN revenue_original_currency
-                                else SAFE_DIVIDE(revenue_original_currency, eur_curr_rate) 
-                            end as revenue_eur,
-                        `
-                    }
-                from (
+                with joined as (
                     select 
                         ${campaigns === false ? `* replace(${adjustGa4SourceMedium()}),` : '*,'}
+                        -- base_table.date as date,
+                        -- curr.date as curr_date,
                         '${this._clientName}' as client_name,
                         '${this._clientId}' as client_id,
                         case ${caseStatemets.project_id} else null end as project_id, 
                         case ${caseStatemets.project_name} else null end as project_name, 
                         ${normalizeCampaignName('campaign_name')} as campaign_name_join,
                     from 
-                        ${ctx.ref(`${refName}`)}
-                ) as base_table
-                left join (
+                        ${ctx.ref(`${refName}`)} as base_table
+                    left join (
+                        select 
+                            date as curr_date,
+                            toCurrency,
+                            rate as eur_curr_rate,
+                            eur_czk_rate
+                        from 
+                            ${ctx.ref(this._currencyTableConfig.name)} 
+                    ) as curr
+                    on base_table.date = curr.curr_date and base_table.currency_code = curr.toCurrency
+                )
+                , currency_conversion as (
                     select 
-                        date,
-                        toCurrency,
-                        rate as eur_curr_rate,
-                        eur_czk_rate
+                        * EXCEPT(curr_date, eur_curr_rate, eur_czk_rate),
+                        ${
+                            campaigns === true 
+                            ? `case 
+                                    when currency_code = 'CZK' THEN cost_original_currency
+                                    else SAFE_MULTIPLY(
+                                        SAFE_DIVIDE(cost_original_currency, eur_curr_rate),
+                                        eur_czk_rate
+                                    ) 
+                                end as cost_czk, 
+                                case 
+                                    when eur_curr_rate is null THEN cost_original_currency
+                                    else SAFE_DIVIDE(cost_original_currency, eur_curr_rate) 
+                                end as cost_eur,
+                                case
+                                    when currency_code = 'CZK' THEN conversion_value_original_currency
+                                    else SAFE_MULTIPLY(
+                                        SAFE_DIVIDE(conversion_value_original_currency, eur_curr_rate),
+                                        eur_czk_rate
+                                    ) 
+                                end as conversion_value_czk, 
+                                case 
+                                    when eur_curr_rate is null THEN conversion_value_original_currency
+                                    else SAFE_DIVIDE(conversion_value_original_currency, eur_curr_rate) 
+                                end as conversion_value_eur,
+                            ` 
+                            : `
+                                case
+                                    when currency_code = 'CZK' THEN revenue_original_currency
+                                    else SAFE_MULTIPLY(
+                                        SAFE_DIVIDE(revenue_original_currency, eur_curr_rate),
+                                        eur_czk_rate
+                                    ) 
+                                end as revenue_czk, 
+                                case 
+                                    when eur_curr_rate is null THEN revenue_original_currency
+                                    else SAFE_DIVIDE(revenue_original_currency, eur_curr_rate) 
+                                end as revenue_eur,
+                            `
+                        }
                     from 
-                        ${ctx.ref(this._currencyTableConfig.name)} 
-                ) as curr
-                on base_table.date = curr.date and base_table.currency_code = curr.toCurrency
-                where 
-                    project_id is not null
+                        joined
+                    where 
+                        project_id is not null
+                )
+                select 
+                    * EXCEPT(
+                        ${campaigns === true
+                            ? `
+                                cost_czk, cost_eur, cost_original_currency, 
+                                conversion_value_czk, conversion_value_eur, conversion_value_original_currency, 
+                                conversions
+                            `
+                            : `
+                                revenue_czk, revenue_eur, revenue_original_currency, 
+                                sessions, transactions
+                            `
+                        }
+                    ),
+                    ${campaigns === true
+                        ? `
+                            SUM(cost_czk) as cost_czk , 
+                            SUM(cost_eur) as cost_eur , 
+                            SUM(cost_original_currency) as cost_original_currency , 
+                            SUM(conversion_value_czk) as conversion_value_czk , 
+                            SUM(conversion_value_eur) as conversion_value_eur , 
+                            SUM(conversion_value_original_currency) as conversion_value_original_currency , 
+                            SUM(conversions) as conversions ,
+                        `
+                        : `
+                                SUM(revenue_czk) as revenue_czk, 
+                                SUM(revenue_eur) as revenue_eur, 
+                                SUM(revenue_original_currency) as revenue_original_currency, 
+                                SUM(sessions) as sessions, 
+                                SUM(transactions) as transactions,
+                        `
+                    }
+                from 
+                    currency_conversion
+                group by 
+                    all
             `)
         }
 
@@ -355,12 +418,12 @@ class Layer2 extends ClientReporting {
                                 currency_code,
                                 ${campaigns === true ? 'campaign_id,' : ''}
                                 campaign_name,
-                                campaign_name_join,
-                                ${campaigns === true ? 'CAST(cost_original_currency as string),' : ''}
-                                ${campaigns === true ? 'CAST(clicks as string),' : ''}
-                                ${campaigns === true ? 'CAST(impressions as string),' : ''}
-                                ${campaigns === true ? 'CAST(conversions as string),' : 'CAST(transactions as string),'}
-                                ${campaigns === true ? 'CAST(conversion_value_original_currency as string)' : 'CAST(revenue_original_currency as string)'}
+                                campaign_name_join
+                                -- ${campaigns === true ? 'CAST(cost_original_currency as string),' : ''}
+                                -- ${campaigns === true ? 'CAST(clicks as string),' : ''}
+                                -- ${campaigns === true ? 'CAST(impressions as string),' : ''}
+                                -- ${campaigns === true ? 'CAST(conversions as string),' : 'CAST(transactions as string),'}
+                                -- ${campaigns === true ? 'CAST(conversion_value_original_currency as string)' : 'CAST(revenue_original_currency as string)'}
                             order by 
                                 date
                         ) as rn    

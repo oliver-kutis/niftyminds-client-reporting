@@ -57,9 +57,10 @@ const client = {
         sklik: [
             {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
         ],
-        facebook: [
-            {property_id: '447736129796848', project_id: 'monkeymum_com', project_name: 'monkeymum_com'}
-        ],
+        facebook: 'custom',
+        // facebook: [
+        //     {property_id: '447736129796848', project_id: 'monkeymum_com', project_name: 'monkeymum_com'}
+        // ],
         bing_ads: [
             {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
         ],

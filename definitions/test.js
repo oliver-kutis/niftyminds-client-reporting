@@ -34,12 +34,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
     },
     facebook: {
         project_name: `
-            when platform_name = 'google_ads' then CONCAT(
+            when platform_name = 'facebook' then CONCAT(
                 '${clientSpecific.client.name.split('_')[0]}',
                 '_',
                 lower(split(campaign_name, ' | ')[safe_offset(0)])
             )`,
-        project_id: `when platform_name = 'google_ads' then CONCAT(
+        project_id: `when platform_name = 'facebook' then CONCAT(
             '${clientSpecific.client.name.split('_')[0]}',
             '_',
             lower(split(campaign_name, ' | ')[safe_offset(0)])

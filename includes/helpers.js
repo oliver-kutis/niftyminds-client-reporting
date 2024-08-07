@@ -35,9 +35,17 @@ function addSourceMediumFromPlatform(platformName) {
 }
 
 function normalizeCampaignName(campaignNameCol) {
-    return `
-        UPPER(REGEXP_REPLACE(TRIM(${campaignNameCol}), r'\\W', "_"))
-    `;
+    // return `
+    //     UPPER(REGEXP_REPLACE(TRIM(NORMALIZE_AND_CASEFOLD(REPLACE(${campaignNameCol}, '  ', ' '))), r'\\W', "_"))
+    // `;
+    return `UPPER(REGEXP_REPLACE(
+      TRIM(NORMALIZE(TRANSLATE(
+        REPLACE(${campaignNameCol}, '  ', ' '), 
+        'áéíóúüñÁÉÍÓÚÜÑ', 
+        'aeiouunAEIOUUN'
+      ))), 
+      r'\\W', '_'
+    ))`
 }
 
 
