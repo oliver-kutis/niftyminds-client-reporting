@@ -8,9 +8,9 @@ const client = {
     platforms: [
         'ga4',
         'google_ads',
-        // 'sklik',
+        'sklik',
         'facebook',
-        // 'bing_ads',
+        'bing_ads',
         'heureka_cz',
         'heureka_sk',
         // 'cj_affiliate',
@@ -51,19 +51,9 @@ const client = {
             { property_id: '327385365', project_id: 'monkeymum_sl', project_name: 'monkeymum_sl' }
         ],
         google_ads: 'custom',
-        // google_ads: [
-        //     {property_id: '4438085976', project_id: 'monkeymum_com', project_name: 'monkeymum_com'},
-        // ],
-        sklik: [
-            {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
-        ],
+        sklik: 'custom',
         facebook: 'custom',
-        // facebook: [
-        //     {property_id: '447736129796848', project_id: 'monkeymum_com', project_name: 'monkeymum_com'}
-        // ],
-        bing_ads: [
-            {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
-        ],
+        bing_ads: 'custom',
         heureka_cz: [
             {property_id: 'b3a277632ca7b1f67901d293e21f6e2d', project_id: 'monkeymum_cz', project_name: 'monkeymum_cz'}
         ],

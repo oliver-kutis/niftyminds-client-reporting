@@ -20,7 +20,7 @@ class ClientReporting {
         this._outputDatabase = clientConfig.outputDataGcpProject  || 'niftyminds-client-reporting';
         this._inputPlatforms = clientConfig.platforms;
         this._projectMappings = clientConfig.projects;
-        this._currencyTableId = clientConfig.currencyTableId || 'niftyminds-client-reporting.00_currencies.vw_all_currencies_czk';
+        this._currencyTableId = clientConfig.currencyTableId || 'niftyminds-client-reporting.00_currencies.vw_all_currencies_add_eur_eur';
         this._currencyTableConfig = {
             database: this._currencyTableId.split('.')[0],
             schema: this._currencyTableId.split('.')[1],
@@ -35,6 +35,9 @@ class Layer0 extends ClientReporting {
         super(clientConfig)
 
         this._createLayer0Query = (schema, tableName, platform) => {
+            let platformAccNameCondition = ``; 
+            if (!platform.includes('heureka') && platform !== 'sklik') platformAccNameCondition = `,cast(platform_account_name as string) as platform_account_name`;
+
             return publish(`vw_${schema}_${tableName}`, {
                 type: 'view',
                 database: this._outputDatabase,
@@ -48,7 +51,7 @@ class Layer0 extends ClientReporting {
                         schema.includes('campaigns') 
                         ? `REPLACE(
                             cast(platform_account_id as string) as platform_account_id
-                            ${platform.includes('heureka') ? `` : `,cast(platform_account_name as string) as platform_account_name`}
+                            ${platformAccNameCondition}
                         )`
                         : ''    
                     }
@@ -125,7 +128,7 @@ class Layer1 extends ClientReporting {
                     
                     return `
                         SELECT 
-                            date,
+                            ${platform === 'sklik' ? "if(date != '', PARSE_DATE('%Y%m%d', date), null)" : "date"} as date,
                             '${platform}' as platform_name,
                             '${addSourceMediumFromPlatform(platform).source}' as source,
                             '${addSourceMediumFromPlatform(platform).medium}' as medium,
@@ -147,6 +150,9 @@ class Layer1 extends ClientReporting {
                             conversion_value_original_currency,
                         FROM 
                             ${platform === 'facebook' ? getFacebookJoinQuery(ctx, this._clientName) : ctx.ref(`vw_l0_${platform}_campaigns_${this._clientName}`)}
+                        WHERE 
+                            date is not null 
+                            or cast(date as string) != ''
                     `;
                 });
 
@@ -309,8 +315,9 @@ class Layer2 extends ClientReporting {
                             toCurrency,
                             rate as eur_curr_rate,
                             eur_czk_rate
-                        from 
+                        from
                             ${ctx.ref(this._currencyTableConfig.name)} 
+
                     ) as curr
                     on base_table.date = curr.curr_date and base_table.currency_code = curr.toCurrency
                 )
@@ -327,7 +334,7 @@ class Layer2 extends ClientReporting {
                                     ) 
                                 end as cost_czk, 
                                 case 
-                                    when eur_curr_rate is null THEN cost_original_currency
+                                    when currency_code = 'EUR' THEN cost_original_currency
                                     else SAFE_DIVIDE(cost_original_currency, eur_curr_rate) 
                                 end as cost_eur,
                                 case
@@ -338,7 +345,7 @@ class Layer2 extends ClientReporting {
                                     ) 
                                 end as conversion_value_czk, 
                                 case 
-                                    when eur_curr_rate is null THEN conversion_value_original_currency
+                                    when currency_code = 'EUR' THEN conversion_value_original_currency
                                     else SAFE_DIVIDE(conversion_value_original_currency, eur_curr_rate) 
                                 end as conversion_value_eur,
                             ` 
@@ -351,7 +358,7 @@ class Layer2 extends ClientReporting {
                                     ) 
                                 end as revenue_czk, 
                                 case 
-                                    when eur_curr_rate is null THEN revenue_original_currency
+                                    when currency_code = 'EUR' THEN revenue_original_currency
                                     else SAFE_DIVIDE(revenue_original_currency, eur_curr_rate) 
                                 end as revenue_eur,
                             `
@@ -494,48 +501,64 @@ class Layer3 extends ClientReporting {
             schema: 'l3_out_marketing',
             tags: ['layer_3', 'out'],
         }).query(ctx => `
-            with base as (
+           with base as (
                 select 
-                    COALESCE(ga4.date, cpg.date) as date,
-                    COALESCE(ga4.client_id, cpg.client_id) as client_id,
-                    COALESCE(ga4.client_name, cpg.client_name) as client_name,
-                    COALESCE(ga4.project_id, cpg.project_id) as project_id,
-                    COALESCE(ga4.project_name, cpg.project_name) as project_name,
-                    COALESCE(ga4.source, cpg.source) as source,
-                    COALESCE(ga4.medium, cpg.medium) as medium,
-                    concat(COALESCE(ga4.source, cpg.source), " / ", COALESCE(ga4.medium, cpg.medium)) as source_medium,
-                    COALESCE(ga4.campaign_name, cpg.campaign_name) as campaign_name,
-                    COALESCE(ga4.campaign_name_join, cpg.campaign_name_join) as campaign_name_join,
-                    sum(sessions) as sessions,
-                    sum(clicks) as clicks,
-                    sum(impressions) as impressions,
-                    sum(cost_original_currency) as cost_original_currency,
-                    sum(cost_czk) as cost_czk,
-                    sum(cost_eur) as cost_eur,
-                    sum(revenue_original_currency) as ga4_revenue_original_currency,
-                    sum(revenue_czk) as ga4_revenue_czk,
-                    sum(revenue_eur) as ga4_revenue_eur,
-                    sum(transactions) as ga4_transactions,
-                    sum(conversion_value_original_currency) as mkt_conversion_value_original_currency,
-                    sum(conversion_value_czk) as mkt_conversion_value_czk,
-                    sum(conversion_value_eur) as mkt_conversion_value_eur,
-                    sum(conversions) as mkt_conversions,
-                from 
-                    ${ctx.ref(`l2_ga4_ecomm_${clientConfig.name}`)} as ga4
-                full join  
-                    ${ctx.ref(`l2_campaigns_${clientConfig.name}`)} as cpg
-                USING (
-                    date, 
+                    date,
                     client_id,
                     client_name,
                     project_id,
                     project_name,
                     source,
                     medium,
-                    campaign_name_join
-                )
-                group by 
-                    all
+                    CONCAT(source, ' / ', medium) as source_medium,
+                    campaign_name,
+                    campaign_name_join,
+                    SUM(0) AS sessions,
+                    SUM(clicks) AS clicks,
+                    SUM(impressions) AS impressions,
+                    SUM(cost_original_currency) AS cost_original_currency,
+                    SUM(cost_czk) AS cost_czk,
+                    SUM(cost_eur) AS cost_eur,
+                    SUM(0) AS ga4_revenue_original_currency,
+                    SUM(0) AS ga4_revenue_czk,
+                    SUM(0) AS ga4_revenue_eur,
+                    SUM(0) AS ga4_transactions,
+                    SUM(conversion_value_original_currency) AS mkt_conversion_value_original_currency,
+                    SUM(conversion_value_czk) AS mkt_conversion_value_czk,
+                    SUM(conversion_value_eur) AS mkt_conversion_value_eur,
+                    SUM(conversions) AS mkt_conversions,
+                from 
+                    ${ctx.ref(`l2_campaigns_${this._clientName}`)}
+                group by all
+                union all 
+                select 
+                    date,
+                    client_id,
+                    client_name,
+                    project_id,
+                    project_name,
+                    source,
+                    medium,
+                    CONCAT(source, ' / ', medium) as source_medium,
+                    campaign_name,
+                    campaign_name_join,
+                    sum(sessions) AS sessions,
+                    SUM(0) AS clicks,
+                    SUM(0) AS impressions,
+                    SUM(0) AS cost_original_currency,
+                    SUM(0) AS cost_czk,
+                    SUM(0) AS cost_eur,
+                    SUM(revenue_original_currency) AS ga4_revenue_original_currency,
+                    SUM(revenue_czk) AS ga4_revenue_czk,
+                    SUM(revenue_eur) AS ga4_revenue_eur,
+                    SUM(transactions) AS ga4_transactions,
+                    SUM(0) AS mkt_conversion_value_original_currency,
+                    SUM(0) AS mkt_conversion_value_czk,
+                    SUM(0) AS mkt_conversion_value_eur,
+                    SUM(0) AS mkt_conversions,
+                from 
+                     ${ctx.ref(`l2_ga4_ecomm_${this._clientName}`)}
+                group by all
             )
             , agg as (
                 select 
@@ -546,56 +569,32 @@ class Layer3 extends ClientReporting {
                     project_name,
                     source,
                     medium,
-                    source_medium,
+                    -- source_medium,
                     campaign_name,
                     campaign_name_join,
-                    sum(sessions) as sessions,
-                    sum(clicks) as clicks,
-                    sum(impressions) as impressions,
-                    sum(cost_original_currency) as cost_original_currency,
-                    sum(cost_czk) as cost_czk,
-                    sum(cost_eur) as cost_eur,
-                    sum(ga4_revenue_original_currency) as ga4_revenue_original_currency,
-                    sum(ga4_revenue_czk) as ga4_revenue_czk,
-                    sum(ga4_revenue_eur) as ga4_revenue_eur,
-                    sum(ga4_transactions) as ga4_transactions,
-                    sum(mkt_conversion_value_original_currency) as mkt_conversion_value_original_currency,
-                    sum(mkt_conversion_value_czk) as mkt_conversion_value_czk,
-                    sum(mkt_conversion_value_eur) as mkt_conversion_value_eur,
-                    sum(mkt_conversions) as mkt_conversions,
+                    SUM(sessions) AS sessions,
+                    SUM(clicks) AS clicks,
+                    SUM(impressions) AS impressions,
+                    SUM(cost_original_currency) AS cost_original_currency,
+                    SUM(cost_czk) AS cost_czk,
+                    SUM(cost_eur) AS cost_eur,
+                    SUM(ga4_revenue_original_currency) AS ga4_revenue_original_currency,
+                    SUM(ga4_revenue_czk) AS ga4_revenue_czk,
+                    SUM(ga4_revenue_eur) AS ga4_revenue_eur,
+                    SUM(ga4_transactions) AS ga4_transactions,
+                    SUM(mkt_conversion_value_original_currency) AS mkt_conversion_value_original_currency,
+                    SUM(mkt_conversion_value_czk) AS mkt_conversion_value_czk,
+                    SUM(mkt_conversion_value_eur) AS mkt_conversion_value_eur,
+                    SUM(mkt_conversions) AS mkt_conversions,
                 from 
                     base 
-                group by 
-                    all
+                group by all
             )
+
             select 
-                current_datetime() as updated_datetime,
-                *
-                -- date,
-                -- client_id,
-                -- client_name,
-                -- project_id,
-                -- project_name,
-                -- source,
-                -- medium,
-                -- source_medium,
-                -- campaign_name,
-                -- campaign_name_join,
-                -- sessions,
-                -- clicks,
-                -- impressions,
-                -- cost_original_currency,
-                -- cost_czk,
-                -- cost_eur,
-                -- ga4_revenue_original_currency,
-                -- ga4_revenue_czk,
-                -- ga4_revenue_eur,
-                -- ga4_transactions,
-                -- mkt_conversion_value_original_currency,
-                -- mkt_conversion_value_czk,
-                -- mkt_conversion_value_eur,
-                -- mkt_conversions,
-            from agg
+                * replace(source as source) 
+            from 
+                agg
         `)
     }
 }

@@ -44,6 +44,27 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
             '_',
             lower(split(campaign_name, ' | ')[safe_offset(0)])
         )`,
+    },
+    bing_ads: {
+        project_name: `
+            when platform_name = 'bing_ads' then CONCAT(
+                '${clientSpecific.client.name.split('_')[0]}',
+                '_',
+                lower(split(campaign_name, ' | ')[safe_offset(0)])
+            )`,
+        project_id: `when platform_name = 'bing_ads' then CONCAT(
+            '${clientSpecific.client.name.split('_')[0]}',
+            '_',
+            lower(split(campaign_name, ' | ')[safe_offset(0)])
+        )`,
+    },
+    sklik: {
+        project_name: `
+            when platform_name = 'sklik' then 'monkeymum_cz'
+        `,
+        project_id: `
+            when platform_name = 'sklik' then 'monkeymum_cz'
+        `
     }
 });
 layer2.addJoinColumnsAndCurrencyConversionGa4();

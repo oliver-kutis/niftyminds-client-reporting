@@ -4,6 +4,7 @@ function adjustGa4SourceMedium() {
             when lower(source) like '%heureka%' then 'heureka' 
             when lower(source) like '%facebook%' and lower(medium) = 'referral' then 'facebook'
             when lower(source) like '%instagram%' and lower(medium) = 'referral' then 'instagram'
+            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid'), then 'facebook'
             when lower(source) like '%zbozi%' and lower(medium) = 'referral' then 'zbozi'
             when lower(source) like '%sklik%' or lower(source) like '%seznam%' and lower(medium) != 'referral' then 'seznam'
             when lower(source) like '%fb%' or lower(source) like '%facebook%' and lower(medium) != 'referral' then 'facebook'
@@ -16,6 +17,7 @@ function adjustGa4SourceMedium() {
             when lower(source) like '%zbozi%' and lower(medium) = 'referral' then 'cpc'
             when lower(source) like '%sklik%' or lower(source) like '%seznam%' and lower(medium) != 'referral' then 'cpc'
             when lower(source) like '%fb%' or lower(source) like '%facebook%' and lower(medium) != 'referral' then 'cpc'
+            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid'), then 'cpc'
             else medium
         end as medium
     `;
@@ -30,6 +32,7 @@ function addSourceMediumFromPlatform(platformName) {
     if (platformName === 'sklik') [source, medium] = ['seznam', 'cpc'];
     if (platformName.includes('heureka')) [source, medium] = ['heureka', 'product'];
     if (platformName === 'facebook') [source, medium] = ['facebook', 'cpc'];
+    if (platformName === 'bing_ads') [source, medium] = ['bing', 'cpc'];
     
     return {source: source, medium: medium};
 }
@@ -50,13 +53,13 @@ function normalizeCampaignName(campaignNameCol) {
 
 
 function addHeurekaCurrency(platform) {
-    if (platform.includes('cz')) return "'CZK'";
-    if (platform.includes('sk')) return "'EUR'";
+    if (platform.endsWith('cz') || platform === 'sklik') return "'CZK'";
+    if (platform.endsWith('sk')) return "'EUR'";
 }
 
 function addHeurekaPlatformAccountName(platform, clientName) {
-    if (platform.includes('cz')) return `'${clientName}_cz'`;
-    if (platform.includes('sk')) return `'${clientName}_sk'`;
+    if (platform.endsWith('cz') || platform === 'sklik') return `'${clientName}_cz'`;
+    if (platform.endsWith('sk')) return `'${clientName}_sk'`;
 }
 
 function addClicksColumn(platform) {
@@ -70,6 +73,9 @@ function addClicksColumn(platform) {
 function addCostsColumn(platform) {
     if (platform === 'google_ads') {
         return `SAFE_DIVIDE(cost_micros_original_currency, 1000000) as cost_original_currency`;
+    } 
+    if (platform === 'sklik') {
+        return `SAFE_DIVIDE(cost_original_currency, 100) as cost_original_currency`;
     }
 
     return `cost_original_currency`;
