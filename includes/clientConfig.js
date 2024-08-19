@@ -15,17 +15,6 @@ const client = {
         'heureka_sk',
         'cj_affil',
     ],
-    platformsWithCustomProjectDefinition: {
-        byCampaignName: {
-            google_ads: {
-                regex: false, // TODO: regex to use in REGEXP_EXTRACT
-                split: {
-                    index: 0,
-                    character: " | " // for split, provide split character and index to pick for country
-                } 
-            }
-        }
-    },
     // each project has an entry for the platform
     //  - If project doesn't have a separate property within platform, custom logic needs to be applied to assign it 
     //      - In that case, empty array will be passed to the platform key (as in cj_affiliate case)
@@ -63,7 +52,6 @@ const client = {
         cj_affil: 'custom'
     }   
 };
-
 
 
 module.exports = {

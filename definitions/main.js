@@ -6,10 +6,10 @@ const {
     Layer3
 } = require('index');
 
-const layer0 = new Layer0(clientConfig = clientSpecific.client);
-const layer1 = new Layer1(clientConfig = clientSpecific.client);
-const layer2 = new Layer2(clientConfig = clientSpecific.client);
-const layer3 = new Layer3(clientConfig = clientSpecific.client);
+const layer0 = new Layer0(clientConfig = clientConfig.client);
+const layer1 = new Layer1(clientConfig = clientConfig.client);
+const layer2 = new Layer2(clientConfig = clientConfig.client);
+const layer3 = new Layer3(clientConfig = clientConfig.client);
 
 layer0.publishDefinitions('campaigns');
 layer0.publishDefinitions('ga4');
@@ -23,12 +23,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
     google_ads: {
         project_name: `
             when platform_name = 'google_ads' then CONCAT(
-                '${clientSpecific.client.name.split('_')[0]}',
+                '${clientConfig.client.name.split('_')[0]}',
                 '_',
                 lower(split(campaign_name, ' | ')[safe_offset(0)])
         )`,
         project_id: `when platform_name = 'google_ads' then CONCAT(
-            '${clientSpecific.client.name.split('_')[0]}',
+            '${clientConfig.client.name.split('_')[0]}',
             '_',
             lower(split(campaign_name, ' | ')[safe_offset(0)])
         )`,
@@ -36,12 +36,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
     facebook: {
         project_name: `
             when platform_name = 'facebook' then CONCAT(
-                '${clientSpecific.client.name.split('_')[0]}',
+                '${clientConfig.client.name.split('_')[0]}',
                 '_',
                 lower(split(campaign_name, ' | ')[safe_offset(0)])
             )`,
         project_id: `when platform_name = 'facebook' then CONCAT(
-            '${clientSpecific.client.name.split('_')[0]}',
+            '${clientConfig.client.name.split('_')[0]}',
             '_',
             lower(split(campaign_name, ' | ')[safe_offset(0)])
         )`,
@@ -49,12 +49,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
     bing_ads: {
         project_name: `
             when platform_name = 'bing_ads' then CONCAT(
-                '${clientSpecific.client.name.split('_')[0]}',
+                '${clientConfig.client.name.split('_')[0]}',
                 '_',
                 lower(split(campaign_name, ' | ')[safe_offset(0)])
             )`,
         project_id: `when platform_name = 'bing_ads' then CONCAT(
-            '${clientSpecific.client.name.split('_')[0]}',
+            '${clientConfig.client.name.split('_')[0]}',
             '_',
             lower(split(campaign_name, ' | ')[safe_offset(0)])
         )`,
