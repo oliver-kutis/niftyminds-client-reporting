@@ -4,11 +4,12 @@ function adjustGa4SourceMedium() {
             when lower(source) like '%heureka%' then 'heureka' 
             when lower(source) like '%facebook%' and lower(medium) = 'referral' then 'facebook'
             when lower(source) like '%instagram%' and lower(medium) = 'referral' then 'instagram'
-            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid'), then 'facebook'
+            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid') then 'facebook'
             when lower(source) like '%zbozi%' and lower(medium) = 'referral' then 'zbozi'
             when lower(source) like '%sklik%' or lower(source) like '%seznam%' and lower(medium) != 'referral' then 'seznam'
             when lower(source) like '%fb%' or lower(source) like '%facebook%' and lower(medium) != 'referral' then 'facebook'
-            else source
+            when lower(source) = 'bing' and lower(medium) in ('paid', 'cpc', 'ppc') then 'bing'
+            else lower(source)
         end as source,
     `;
     let medium = `
@@ -17,11 +18,19 @@ function adjustGa4SourceMedium() {
             when lower(source) like '%zbozi%' and lower(medium) = 'referral' then 'cpc'
             when lower(source) like '%sklik%' or lower(source) like '%seznam%' and lower(medium) != 'referral' then 'cpc'
             when lower(source) like '%fb%' or lower(source) like '%facebook%' and lower(medium) != 'referral' then 'cpc'
-            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid'), then 'cpc'
-            else medium
+            when lower(source) = 'ig' and lower(medium) in ('ads', 'cpc', 'paid') then 'cpc'
+            when lower(source) = 'bing' and lower(medium) in ('paid', 'cpc', 'ppc') then 'cpc'
+            else lower(medium)
         end as medium
     `;
+    // let campaign_name = `
+    //     case
+    //         when lower(source) = 'cj' and lower(medium) = 'affiliate' then 'cj_affiliate'
+    //         else campaign_name
+    //     end as campaign_name
+    // `;
 
+    // return [source, medium, campaign_name].join('\n');
     return [source, medium].join('\n');
 }
 
@@ -33,6 +42,7 @@ function addSourceMediumFromPlatform(platformName) {
     if (platformName.includes('heureka')) [source, medium] = ['heureka', 'product'];
     if (platformName === 'facebook') [source, medium] = ['facebook', 'cpc'];
     if (platformName === 'bing_ads') [source, medium] = ['bing', 'cpc'];
+    if (platformName === 'cj_affil') [source, medium] = ['cj', 'affiliate'];
     
     return {source: source, medium: medium};
 }
@@ -52,19 +62,22 @@ function normalizeCampaignName(campaignNameCol) {
 }
 
 
-function addHeurekaCurrency(platform) {
+function addCurrency(platform) {
     if (platform.endsWith('cz') || platform === 'sklik') return "'CZK'";
-    if (platform.endsWith('sk')) return "'EUR'";
+    if (platform.endsWith('sk') || platform === 'cj_affil') return "'EUR'";
 }
 
-function addHeurekaPlatformAccountName(platform, clientName) {
+function addPlatformAccountName(platform, clientName) {
     if (platform.endsWith('cz') || platform === 'sklik') return `'${clientName}_cz'`;
     if (platform.endsWith('sk')) return `'${clientName}_sk'`;
+    if (platform === 'cj_affil') return `'${clientName}'`;
 }
 
 function addClicksColumn(platform) {
-    let col = ``
+    let col = ``;
+
     if (platform.includes('heureka'))  col += `SAFE_DIVIDE(cost_original_currency, cost_original_currency_per_click) as clicks`;
+    else if (platform === 'cj_affil') col += `NULL as clicks`;
     else col += `clicks`;
 
     return col;
@@ -77,8 +90,23 @@ function addCostsColumn(platform) {
     if (platform === 'sklik') {
         return `SAFE_DIVIDE(cost_original_currency, 100) as cost_original_currency`;
     }
+    if (platform === 'heureka_cz') {
+        return 'SAFE_DIVIDE(cost_original_currency, 100) as cost_original_currency';
+    }
 
     return `cost_original_currency`;
+}
+
+function addConversionsColumn(platform) {
+    if (platform === 'cj_affil') return '1 as conversions';
+    
+    return 'conversions';
+}
+function addDateColumn(platform) {
+    if (platform === 'sklik') return "if(date != '', PARSE_DATE('%Y%m%d', date), null) as date";
+    if (platform === 'cj_affil') return "date(date) as date";
+
+    return 'date';
 }
 
 function createUnionForCampaignData(ctx, clientConfig) {
@@ -98,8 +126,8 @@ function createUnionForCampaignData(ctx, clientConfig) {
                 '${helperFuncs.addSourceMediumFromPlatform(platform).source}' as source,
                 '${helperFuncs.addSourceMediumFromPlatform(platform).medium}' as medium,
                 platform_account_id as platform_account_id,
-                ${!columnMappings.platformColumns[platform].includes('platform_account_name') ? addHeurekaPlatformAccountName(platform, clientConfig.name) : 'platform_account_name'} as platform_account_name,
-                ${!columnMappings.platformColumns[platform].includes('currency_code') ? addHeurekaCurrency(platform) : 'currency_code'} as currency_code,
+                ${!columnMappings.platformColumns[platform].includes('platform_account_name') ? addPlatformAccountName(platform, clientConfig.name) : 'platform_account_name'} as platform_account_name,
+                ${!columnMappings.platformColumns[platform].includes('currency_code') ? addCurrency(platform) : 'currency_code'} as currency_code,
                 ${!columnMappings.platformColumns[platform].includes('campaign_name') ? `NULL` : 'campaign_name'} as campaign_name,
                 ${!columnMappings.platformColumns[platform].includes('campaign_id') ? `NULL` : 'campaign_id'} as campaign_id,
                 ${!columnMappings.platformColumns[platform].includes('impressions') ? `NULL` : 'impressions'} as impressions,
@@ -173,16 +201,41 @@ function getFacebookJoinQuery(ctx, clientName) {
     )`
 }
 
+function getCjAffilJoinQuery(ctx, clientName) {
+    return `(
+        SELECT 
+            date,
+            platform_account_id,
+            campaign_id,
+            max(campaign_name) as campaign_name,
+            sum(cost_original_currency) as cost_original_currency,
+            sum(conversion_value_original_currency) as conversion_value_original_currency,
+        FROM 
+            ${ctx.ref(`vw_l0_cj_affil_campaigns_${clientName}`)}
+        GROUP BY 
+            ALL
+    )`;
+}
+
+function getLayer1JoinQuery(ctx, platformName, clientName) {
+    if (platformName === 'facebook') return getFacebookJoinQuery(ctx, clientName);
+    if (platformName === 'cj_affil') return getCjAffilJoinQuery(ctx, clientName);
+
+    return ctx.ref(`vw_l0_${platformName}_campaigns_${clientName}`);
+}
 
 module.exports = {
     adjustGa4SourceMedium,
     addSourceMediumFromPlatform,
     normalizeCampaignName,
-    addHeurekaCurrency,
-    addHeurekaPlatformAccountName,
+    addCurrency,
+    addPlatformAccountName,
     addClicksColumn,
     addCostsColumn,
+    addConversionsColumn,
+    addDateColumn,
     createUnionForCampaignData,
     getFacebookJoinQuery,
+    getLayer1JoinQuery
 }
 

@@ -13,7 +13,7 @@ const client = {
         'bing_ads',
         'heureka_cz',
         'heureka_sk',
-        // 'cj_affiliate',
+        'cj_affil',
     ],
     platformsWithCustomProjectDefinition: {
         byCampaignName: {
@@ -60,9 +60,7 @@ const client = {
         heureka_sk: [
             {property_id: '4a107449e02fa5adee21d5d7abfa3076', project_id: 'monkeymum_sk', project_name: 'monkeymum_sk'}
         ],
-        cj_affiliate: [
-            // {property_id: '123', project_id: '321', project_name: 'monkeymum_cz'}
-        ],
+        cj_affil: 'custom'
     }   
 };
 

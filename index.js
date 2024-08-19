@@ -1,13 +1,16 @@
 // const creators = require('./includes/tablesAndViesCreators');
 const {
     getFacebookJoinQuery, 
+    getLayer1JoinQuery,
     addSourceMediumFromPlatform, 
     adjustGa4SourceMedium,
     normalizeCampaignName,
     addClicksColumn, 
     addCostsColumn, 
-    addHeurekaPlatformAccountName,
-    addHeurekaCurrency,
+    addPlatformAccountName,
+    addCurrency,
+    addConversionsColumn,
+    addDateColumn,
 } = require('./includes/helpers')
 const {platformColumns} = require('./includes/constants');
 
@@ -21,10 +24,17 @@ class ClientReporting {
         this._inputPlatforms = clientConfig.platforms;
         this._projectMappings = clientConfig.projects;
         this._currencyTableId = clientConfig.currencyTableId || 'niftyminds-client-reporting.00_currencies.vw_all_currencies_add_eur_eur';
+        this._clientsAndProjectsTableId = clientConfig.clientsAndProjectsTableId || 'niftyminds-client-reporting.00_other.clients_and_projects';
         this._currencyTableConfig = {
             database: this._currencyTableId.split('.')[0],
             schema: this._currencyTableId.split('.')[1],
             name: this._currencyTableId.split('.')[2],
+            tags: ['source_definition', 'declaration']
+        };
+        this._clientsAndProjectsTableConfig = {
+            database: this._clientsAndProjectsTableId.split('.')[0],
+            schema: this._clientsAndProjectsTableId.split('.')[1],
+            name: this._clientsAndProjectsTableId.split('.')[2],
             tags: ['source_definition', 'declaration']
         }
     }
@@ -36,7 +46,22 @@ class Layer0 extends ClientReporting {
 
         this._createLayer0Query = (schema, tableName, platform) => {
             let platformAccNameCondition = ``; 
-            if (!platform.includes('heureka') && platform !== 'sklik') platformAccNameCondition = `,cast(platform_account_name as string) as platform_account_name`;
+            if (!platform.includes('heureka') && !['sklik', 'cj_affil'].includes(platform)) platformAccNameCondition = `,cast(platform_account_name as string) as platform_account_name`;
+            
+            let cjAffilReplaceCols = ``;
+            let cjAffilNewCols = ``;
+            if (platform === 'cj_affil') {
+                cjAffilReplaceCols = `, safe_multiply(cost_original_currency, -1) as cost_original_currency, date(date) as date`;
+                cjAffilNewCols = `
+                    , REGEXP_REPLACE( 
+                        REGEXP_REPLACE(NET.REG_DOMAIN(click_referring_url), r"^www\\.", "" ), 
+                            r"\\.", 
+                            "_" 
+                    ) as campaign_name
+                    , website_id as campaign_id,
+                    date as timestamp,
+                `;
+            }
 
             return publish(`vw_${schema}_${tableName}`, {
                 type: 'view',
@@ -52,9 +77,12 @@ class Layer0 extends ClientReporting {
                         ? `REPLACE(
                             cast(platform_account_id as string) as platform_account_id
                             ${platformAccNameCondition}
+                            ${cjAffilReplaceCols}
                         )`
                         : ''    
                     }
+                    ${cjAffilNewCols}
+
                 FROM \`${this._inputDatabase}.${schema}.${tableName}\`
             `)
           };
@@ -69,6 +97,8 @@ class Layer0 extends ClientReporting {
             platforms = ['ga4_ecomm', 'ga4_meta'];
         } else if (type === 'currencies') {
             return declare(this._currencyTableConfig);
+        } else if (type === 'clients_and_projects') {
+            return declare(this._clientsAndProjectsTableConfig);
         }
 
         platforms.forEach((platform) => {
@@ -123,18 +153,20 @@ class Layer1 extends ClientReporting {
                     // ga4
                     if (ix === 0) return ``;
 
-                    // // google_ads - temporary solution
-                    // if (platform === 'google_ads') tableName = 'niftyminds_mcc';
+                    // facebook or cj_affil
+
+                    // if (['facebook', 'cj_affil'].includes(platform)) {
                     
+                    // ${platform === 'facebook' ? getFacebookJoinQuery(ctx, this._clientName) : ctx.ref(`vw_l0_${platform}_campaigns_${this._clientName}`)}
                     return `
                         SELECT 
-                            ${platform === 'sklik' ? "if(date != '', PARSE_DATE('%Y%m%d', date), null)" : "date"} as date,
+                            ${addDateColumn(platform)},
                             '${platform}' as platform_name,
                             '${addSourceMediumFromPlatform(platform).source}' as source,
                             '${addSourceMediumFromPlatform(platform).medium}' as medium,
                             platform_account_id as platform_account_id,
-                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('platform_account_name') ? addHeurekaPlatformAccountName(platform, this._clientName) : 'platform_account_name'} as platform_account_name,
-                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('currency_code') ? addHeurekaCurrency(platform) : 'currency_code'} as currency_code,
+                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('platform_account_name') ? addPlatformAccountName(platform, this._clientName) : 'platform_account_name'} as platform_account_name,
+                            ${!this._campaignsUnionConfig.platformColumns[platform].includes('currency_code') ? addCurrency(platform) : 'currency_code'} as currency_code,
                             ${!this._campaignsUnionConfig.platformColumns[platform].includes('campaign_name') 
                                 ? `concat('${addSourceMediumFromPlatform(platform).source}', '_', '${addSourceMediumFromPlatform(platform).medium}')` 
                                 : 'campaign_name'
@@ -146,10 +178,11 @@ class Layer1 extends ClientReporting {
                             ${!this._campaignsUnionConfig.platformColumns[platform].includes('impressions') ? `NULL` : 'impressions'} as impressions,
                             ${addClicksColumn(platform)},
                             ${addCostsColumn(platform)},
-                            conversions,
+                            ${addConversionsColumn(platform)},
+                            -- conversions,
                             conversion_value_original_currency,
                         FROM 
-                            ${platform === 'facebook' ? getFacebookJoinQuery(ctx, this._clientName) : ctx.ref(`vw_l0_${platform}_campaigns_${this._clientName}`)}
+                            ${getLayer1JoinQuery(ctx, platform, this._clientName)}
                         WHERE 
                             date is not null 
                             or cast(date as string) != ''
@@ -220,11 +253,12 @@ class Layer2 extends ClientReporting {
     constructor(clientConfig) {
         super(clientConfig)
 
-        this._constructJoinColumnsCaseStatements = (platforms, campaigns, propertyIdKey, customPlatformCaseWhen = {}) => {
+        this._constructJoinColumnsCaseStatements = (platforms, campaigns, propertyIdKey, customPlatformCaseWhen = {}, customPlatformCurrencyCode) => {
             // Initialize an object to store case statements for project IDs and project names
             const platformCases = {
                 project_id: [],
-                project_name: []
+                project_name: [],
+                currency_code: [],
             }
 
             // Construct case statements for each platform
@@ -234,6 +268,7 @@ class Layer2 extends ClientReporting {
                 const platformProjects = this._projectMappings[platform];
                 let caseStatementProjectName = ``;
                 let caseStatementProjectId = ``;
+                let caseStatementCurrencyCode = ``;
 
                 if (platformProjects === 'custom') {
                     if (!customPlatformCaseWhen[platform]) {
@@ -266,19 +301,25 @@ class Layer2 extends ClientReporting {
 
                 }
 
+                if (customPlatformCurrencyCode && customPlatformCurrencyCode[platform]) {
+                    caseStatementCurrencyCode = `when ${platformNameCondition.replace(' and', '')} then ${customPlatformCurrencyCode[platform]}`
+                }
+
 
                 // Append the constructed case statements to platformCases
                 platformCases.project_id.push(caseStatementProjectId);
                 platformCases.project_name.push(caseStatementProjectName);
+                platformCases.currency_code.push(caseStatementCurrencyCode);
             });
 
             return {
                 project_id: platformCases.project_id.join('\n '),
-                project_name: platformCases.project_name.join('\n ')    
+                project_name: platformCases.project_name.join('\n '),
+                currency_code: platformCases.currency_code.join('\n '),
             };
         }
 
-        this._addJoinColumnsAndCurrencyConversion = (campaigns = true, customPlatformCaseWhen) => {
+        this._addJoinColumnsAndCurrencyConversion = (campaigns = true, customPlatformCaseWhen, customPlatformCurrencyCode) => {
             const platforms = campaigns ? this._inputPlatforms.filter((platform) => platform !== 'ga4') : ['ga4'];
 
             const propertyIdKey = campaigns ? 'platform_account_id' : 'platform_property_id';
@@ -289,7 +330,7 @@ class Layer2 extends ClientReporting {
             const schema = `${schemaPrefix}${this._clientName}`;
             const refName = `${refNamePrefix}${this._clientName}`; 
 
-            const caseStatemets = this._constructJoinColumnsCaseStatements(platforms, campaigns, propertyIdKey, customPlatformCaseWhen);
+            const caseStatemets = this._constructJoinColumnsCaseStatements(platforms, campaigns, propertyIdKey, customPlatformCaseWhen, customPlatformCurrencyCode);
 
             return publish(`vw_${schema}`, {
                 type: 'view',
@@ -299,13 +340,25 @@ class Layer2 extends ClientReporting {
             }).query(ctx => `
                 with joined as (
                     select 
-                        ${campaigns === false ? `* replace(${adjustGa4SourceMedium()}),` : '*,'}
+                        ${campaigns === false 
+                            ? `* replace(${adjustGa4SourceMedium()}),` 
+                            : `
+                                * 
+                                ${customPlatformCurrencyCode && caseStatemets.currency_code 
+                                    ? `REPLACE(
+                                        case ${caseStatemets.currency_code} else currency_code end as currency_code
+                                    )`
+                                    : ``
+                                }, 
+                            `
+                        }
                         -- base_table.date as date,
                         -- curr.date as curr_date,
                         '${this._clientName}' as client_name,
                         '${this._clientId}' as client_id,
                         case ${caseStatemets.project_id} else null end as project_id, 
                         case ${caseStatemets.project_name} else null end as project_name, 
+                        ${customPlatformCurrencyCode && caseStatemets.currency_code ? caseStatemets.currency_code : ``}
                         ${normalizeCampaignName('campaign_name')} as campaign_name_join,
                     from 
                         ${ctx.ref(`${refName}`)} as base_table
@@ -372,11 +425,13 @@ class Layer2 extends ClientReporting {
                     * EXCEPT(
                         ${campaigns === true
                             ? `
+                                campaign_name, campaign_name_join,
                                 cost_czk, cost_eur, cost_original_currency, 
                                 conversion_value_czk, conversion_value_eur, conversion_value_original_currency, 
                                 conversions
                             `
                             : `
+                                campaign_name, campaign_name_join,
                                 revenue_czk, revenue_eur, revenue_original_currency, 
                                 sessions, transactions
                             `
@@ -384,6 +439,16 @@ class Layer2 extends ClientReporting {
                     ),
                     ${campaigns === true
                         ? `
+                            case 
+                                when source = 'cj' and medium = 'affiliate' then project_name
+                                when source = 'heureka' and medium = 'product' then 'heureka_product'
+                                else campaign_name
+                            end as campaign_name,
+                            case 
+                                when source = 'cj' and medium = 'affiliate' then ${normalizeCampaignName('project_name')}
+                                when source = 'heureka' and medium = 'product' then 'HEUREKA_PRODUCT'
+                                else campaign_name_join
+                            end as campaign_name_join,
                             SUM(cost_czk) as cost_czk , 
                             SUM(cost_eur) as cost_eur , 
                             SUM(cost_original_currency) as cost_original_currency , 
@@ -393,11 +458,21 @@ class Layer2 extends ClientReporting {
                             SUM(conversions) as conversions ,
                         `
                         : `
-                                SUM(revenue_czk) as revenue_czk, 
-                                SUM(revenue_eur) as revenue_eur, 
-                                SUM(revenue_original_currency) as revenue_original_currency, 
-                                SUM(sessions) as sessions, 
-                                SUM(transactions) as transactions,
+                            case 
+                                when source = 'cj' and medium = 'affiliate' then project_name
+                                when source = 'heureka' and medium = 'product' then 'heureka_product'
+                                else campaign_name
+                            end as campaign_name,
+                            case 
+                                when source = 'cj' and medium = 'affiliate' then ${normalizeCampaignName('project_name')}
+                                when source = 'heureka' and medium = 'product' then 'HEUREKA_PRODUCT'
+                                else campaign_name_join
+                            end as campaign_name_join,
+                            SUM(revenue_czk) as revenue_czk, 
+                            SUM(revenue_eur) as revenue_eur, 
+                            SUM(revenue_original_currency) as revenue_original_currency, 
+                            SUM(sessions) as sessions, 
+                            SUM(transactions) as transactions,
                         `
                     }
                 from 
@@ -410,7 +485,11 @@ class Layer2 extends ClientReporting {
         this._constructDeduplQuery = (campaigns) => {
             const getQuery = (ctx) => `
                 select 
-                    * except(rn)
+                    * except(rn),
+                    case 
+                        when project_name not in (select distinct project_name from ${ctx.ref("clients_and_projects")}) then false
+                        else true
+                    end as is_project_defined,
                 from (
                     select 
                         *,
@@ -494,7 +573,7 @@ class Layer3 extends ClientReporting {
         super(clientConfig)
     }
 
-    publishLayer() {
+    publishLayer(addFinalModificationQuery = false) {
         return publish(`l3_out_marketing_${this._clientName}`, {
             type: 'table',
             database: this._outputDatabase,
@@ -508,6 +587,7 @@ class Layer3 extends ClientReporting {
                     client_name,
                     project_id,
                     project_name,
+                    is_project_defined,
                     source,
                     medium,
                     CONCAT(source, ' / ', medium) as source_medium,
@@ -537,6 +617,7 @@ class Layer3 extends ClientReporting {
                     client_name,
                     project_id,
                     project_name,
+                    is_project_defined,
                     source,
                     medium,
                     CONCAT(source, ' / ', medium) as source_medium,
@@ -567,6 +648,7 @@ class Layer3 extends ClientReporting {
                     client_name,
                     project_id,
                     project_name,
+                    is_project_defined,
                     source,
                     medium,
                     -- source_medium,
@@ -591,10 +673,26 @@ class Layer3 extends ClientReporting {
                 group by all
             )
 
+            , lastQuery as (
+                ${  
+                    addFinalModificationQuery 
+                    ? `
+                        ${addFinalModificationQuery}
+                    `
+                    : `
+                        select 
+                            * replace(source as source) 
+                        from 
+                            agg
+                    `
+                }
+            )
+
             select 
-                * replace(source as source) 
+                *
             from 
-                agg
+                lastQuery
+
         `)
     }
 }

@@ -61,6 +61,23 @@ const platformColumns = {
         'clicks',
         'conversions',
         'conversion_value_original_currency'
+    ],
+    cj_affil: [
+        'date',
+        'platform_account_id',
+        'click_referring_url',
+        'publisher_id',
+        'publisher_name',
+        'website_id',
+        'website_name',
+        'date',
+        'action_status',
+        'action_type',
+        'commission_id',
+        'cost_original_currency',
+        'conversion_value_original_currency',
+        'campaign_name',
+        'campaign_id',
     ]
 }
 
