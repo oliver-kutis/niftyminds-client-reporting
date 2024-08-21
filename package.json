@@ -1,4 +1,14 @@
 {
+    "name": "@niftyminds/dataform-client-reporting",
+    "version": "0.1.0-beta",
+    "type": "commonjs",
+    "files": [
+        "*.js"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/oliver-kutis/niftyminds-client-reporting.git"
+    },
     "dependencies": {
         "@dataform/core": "3.0.0-beta.4"
     }

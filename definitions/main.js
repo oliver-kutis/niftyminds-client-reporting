@@ -61,17 +61,17 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
     },
     sklik: {
         project_name: `
-            when platform_name = 'sklik' then 'monkeymum_cz'
+            when platform_name = 'sklik' then 'project-name'
         `,
         project_id: `
-            when platform_name = 'sklik' then 'monkeymum_cz'
+            when platform_name = 'sklik' then 'project-name'
         `
     },
     cj_affil: {
         project_name: `
             when platform_name = 'cj_affil' 
                 then CONCAT(
-                    'monkeymum_', 
+                    'project-name', 
                     IF(
                         SPLIT(campaign_name, '_')[safe_offset(1)] = 'com' 
                             or campaign_name is null,
@@ -80,7 +80,7 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
                     )
                 )
         `,
-        project_id: `when platform_name = 'cj_affil' then CONCAT('monkeymum_', IF(SPLIT(campaign_name, '_')[safe_offset(1)] = 'com' or campaign_name is null, 'cz', SPLIT(campaign_name, '_')[safe_offset(1)]))`
+        project_id: `when platform_name = 'cj_affil' then CONCAT('project-name', IF(SPLIT(campaign_name, '_')[safe_offset(1)] = 'com' or campaign_name is null, 'cz', SPLIT(campaign_name, '_')[safe_offset(1)]))`
     }
 });
 layer2.addJoinColumnsAndCurrencyConversionGa4();
@@ -98,7 +98,7 @@ layer3.publishLayer(`
                     and (
                             contains_substr(lower(campaign_name), "at") 
                             or contains_substr(lower(campaign_name), "lu")
-                        ) then 'monkeymum_de' 
+                        ) then 'project-name' 
                 else project_name     
             end as project_name,
             case 
@@ -114,7 +114,7 @@ layer3.publishLayer(`
                     and (
                             contains_substr(lower(campaign_name), "at") 
                             or contains_substr(lower(campaign_name), "lu")
-                        ) then 'monkeymum_de' 
+                        ) then 'project-name' 
                 else project_id     
             end as project_id
         )
