@@ -1,0 +1,4 @@
+defaultProject: niftyminds-client-reporting
+defaultLocation: EU
+defaultDataset: dataform
+defaultAssertionDataset: dataform_assertions

@@ -954,7 +954,6 @@ class Layer3 extends ClientReporting {
                     is_project_defined,
                     source,
                     medium,
-                    CONCAT(source, ' / ', medium) as source_medium,
                     campaign_name,
                     campaign_name_join,
                     SUM(0) AS sessions,
@@ -987,27 +986,6 @@ class Layer3 extends ClientReporting {
                     is_project_defined,
                     source,
                     medium,
-                    CONCAT(source, ' / ', medium) as source_medium,
-                    case 
-                        when medium in ('affiliate', 'cpc', 'product', 'ppc', 'paid') then 'paid'
-                        else 'non-paid'
-                    end as is_paid,
-                    case 
-                        when source = 'cj' and medium = 'affiliate' then 'affiliate'
-                        when source = 'heureka' and medium = 'product' then 'product'
-                        when contains(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(1)] is not null
-                            then SPLIT(campaign_name, " | ")[safe_offset(1)] 
-                        else 'Other'
-                    as campaign_type,
-                    case 
-                        when source = 'cj' and medium = 'affiliate' then 'All'
-                        when source = 'heureka' and medium = 'product' then 'All'
-                        when contains(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(2)] is not null 
-                            then SPLIT(campaign_name, " | ")[safe_offset(2)] 
-                        contains(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(2)] is null 
-                            then 'All'
-                        else 'Other'
-                    as campaign_targeting,
                     campaign_name,
                     campaign_name_join,
                     sum(sessions) AS sessions,
@@ -1027,6 +1005,36 @@ class Layer3 extends ClientReporting {
                 from 
                      ${ctx.ref(`l2_ga4_ecomm_${this._clientName}`)}
                 group by all
+            )
+            /*
+             * Add new columns
+             */
+            , addCols as (
+              select 
+                *,
+                CONCAT(source, ' / ', medium) as source_medium,
+                case 
+                    when medium in ('affiliate', 'cpc', 'product', 'ppc', 'paid') then 'paid'
+                    else 'non-paid'
+                end as is_paid,
+                case 
+                    when source = 'cj' and medium = 'affiliate' then 'affiliate'
+                    when source = 'heureka' and medium = 'product' then 'product'
+                    when contains_substr(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(1)] is not null
+                        then SPLIT(campaign_name, " | ")[safe_offset(1)] 
+                    else 'Other'
+                end as campaign_type,
+                case 
+                    when source = 'cj' and medium = 'affiliate' then 'All'
+                    when source = 'heureka' and medium = 'product' then 'All'
+                    when contains_substr(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(2)] is not null 
+                        then SPLIT(campaign_name, " | ")[safe_offset(2)] 
+                    when contains_substr(campaign_name, ' | ') and SPLIT(campaign_name, " | ")[safe_offset(2)] is null 
+                        then 'All'
+                    else 'Other'
+                end as campaign_targeting,
+              from 
+                base
             )
             /*
              * Aggregate the united data.
@@ -1062,7 +1070,7 @@ class Layer3 extends ClientReporting {
                     SUM(mkt_conversion_value_eur) AS mkt_conversion_value_eur,
                     SUM(mkt_conversions) AS mkt_conversions,
                 from 
-                    base 
+                    addCols 
                 group by all
             )
             /*
