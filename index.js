@@ -798,7 +798,6 @@ class Layer2 extends ClientReporting {
                 `;
 
         const deduplicationColumns = `
-                    ${removeDuplicatesColumns},
                     row_number() over (
                         partition by
                             ${removeDuplicatesColumns}
@@ -809,7 +808,7 @@ class Layer2 extends ClientReporting {
 
         const removeDuplicatesQuery = `
                     select
-                        ${removeDuplicatesColumns},
+                        * except(rn),
                         case
                             when project_name not in (select distinct project_name from ${ctx.ref(
                               "clients_and_projects"
@@ -818,6 +817,7 @@ class Layer2 extends ClientReporting {
                         end as is_project_defined
                     from (
                         select
+                            *,
                             ${deduplicationColumns}
                         from
                             ${ctx.ref(
