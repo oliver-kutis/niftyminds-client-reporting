@@ -90,8 +90,11 @@ function addCostsColumn(platform) {
     if (platform === 'sklik') {
         return `SAFE_DIVIDE(cost_original_currency, 100) as cost_original_currency`;
     }
-    if (platform.includes('heureka')) {
+    if (platform === 'heureka_cz') {
         return 'SAFE_DIVIDE(cost_original_currency, 100) as cost_original_currency';
+    }
+    if (platform === 'heureka_sk') {
+        return 'SAFE_DIVIDE(cost_original_currency, 1000) as cost_original_currency';
     }
 
     return `cost_original_currency`;
