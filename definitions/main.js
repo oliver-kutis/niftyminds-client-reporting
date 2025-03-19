@@ -1,11 +1,13 @@
 const {
-  Layer0,
-  Layer1,
-  Layer2,
-  Layer3,
-// } = require("@niftyminds/dataform-client-reporting");
-} = require("index");
-const { client } = require("../includes/clientConfig");
+    Layer0,
+    Layer1,
+    Layer2,
+    Layer3
+} = require('index');
+
+// } = require('@niftyminds/dataform-client-reporting');
+
+const { client } = require('../includes/clientConfig');
 
 const layer0 = new Layer0(clientConfig = client);
 const layer1 = new Layer1(clientConfig = client);
@@ -26,12 +28,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
             when platform_name = 'google_ads' then CONCAT(
                 '${client.name.split('_')[0]}',
                 '_',
-                lower(split(campaign_name, ' | ')[safe_offset(0)])
+                lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
         )`,
         project_id: `when platform_name = 'google_ads' then CONCAT(
             '${client.name.split('_')[0]}',
             '_',
-            lower(split(campaign_name, ' | ')[safe_offset(0)])
+            lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
         )`,
     },
     facebook: {
@@ -39,12 +41,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
             when platform_name = 'facebook' then CONCAT(
                 '${client.name.split('_')[0]}',
                 '_',
-                lower(split(campaign_name, ' | ')[safe_offset(0)])
+                lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
             )`,
         project_id: `when platform_name = 'facebook' then CONCAT(
             '${client.name.split('_')[0]}',
             '_',
-            lower(split(campaign_name, ' | ')[safe_offset(0)])
+            lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
         )`,
     },
     bing_ads: {
@@ -52,12 +54,12 @@ layer2.addJoinColumnsAndCurrencyConversionCampaigns(customPlatformCaseWhen = {
             when platform_name = 'bing_ads' then CONCAT(
                 '${client.name.split('_')[0]}',
                 '_',
-                lower(split(campaign_name, ' | ')[safe_offset(0)])
+                lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
             )`,
         project_id: `when platform_name = 'bing_ads' then CONCAT(
             '${client.name.split('_')[0]}',
             '_',
-            lower(split(campaign_name, ' | ')[safe_offset(0)])
+            lower(split(IF(campaign_name LIKE "%myTimi%",TRIM(REPLACE(replace(campaign_name, "myTimi |", ""),"PMax:","")), campaign_name), ' | ')[safe_offset(0)])
         )`,
     },
     sklik: {
@@ -100,7 +102,14 @@ layer3.publishLayer(`
                             contains_substr(lower(campaign_name), "at") 
                             or contains_substr(lower(campaign_name), "lu")
                         ) then 'monkeymum_de' 
-                else project_name     
+                when starts_with(lower(campaign_name), "de") then 'monkeymum_de'
+                when starts_with(lower(campaign_name), "at") then 'monkeymum_de'
+                when starts_with(lower(campaign_name), "ie") then 'monkeymum_en'
+                when starts_with(lower(campaign_name), "se |") then 'monkeymum_sv'
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "dutch") then 'monkeymum_nl'
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "french") then 'monkeymum_fr'
+                when starts_with(lower(campaign_name), "3_pla") then concat('monkeymum_', if(split(lower(campaign_name), " | ")[safe_offset(2)] = 'sw', 'sv', split(lower(campaign_name), " | ")[safe_offset(2)]))
+                else if(is_project_defined = false, 'monkeymum_OTHER', project_name)     
             end as project_name,
             case 
                 when starts_with(lower(campaign_name), "de") 
@@ -108,6 +117,13 @@ layer3.publishLayer(`
                             contains_substr(lower(campaign_name), "at") 
                             or contains_substr(lower(campaign_name), "lu")
                         ) then true
+                when starts_with(lower(campaign_name), "de") then true
+                when starts_with(lower(campaign_name), "at") then true
+                when starts_with(lower(campaign_name), "ie") then true
+                when starts_with(lower(campaign_name), "se |") then true
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "dutch") then true
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "french") then true
+                when starts_with(lower(campaign_name), "3_pla") then true
                 else is_project_defined   
             end as is_project_defined,
             case 
@@ -116,9 +132,18 @@ layer3.publishLayer(`
                             contains_substr(lower(campaign_name), "at") 
                             or contains_substr(lower(campaign_name), "lu")
                         ) then 'monkeymum_de' 
-                else project_id     
+                when starts_with(lower(campaign_name), "de") then 'monkeymum_de'
+                when starts_with(lower(campaign_name), "at") then 'monkeymum_de'
+                when starts_with(lower(campaign_name), "ie") then 'monkeymum_en'
+                when starts_with(lower(campaign_name), "se |") then 'monkeymum_sv'
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "dutch") then 'monkeymum_nl'
+                when starts_with(lower(campaign_name), "be") and ends_with(lower(campaign_name), "french") then 'monkeymum_fr'
+                when starts_with(lower(campaign_name), "3_pla") then concat('monkeymum_', if(split(lower(campaign_name), " | ")[safe_offset(2)] = 'sw', 'sv', split(lower(campaign_name), " | ")[safe_offset(2)]))
+                else if(is_project_defined = false, 'monkeymum_OTHER', project_id)
             end as project_id
-        )
+        ),
+        project_name as original_project_name,
+        project_id as original_project_id,
     from 
         agg
 `);
