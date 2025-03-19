@@ -209,7 +209,7 @@ function getCjAffilJoinQuery(ctx, clientName) {
         SELECT 
             date,
             platform_account_id,
-            ifnull(campaign_id, 'N/A') as campaign_id,
+            ifnull(campaign_id, 0) as campaign_id,
             ifnull(max(campaign_name), 'N/A') as campaign_name,
             sum(cost_original_currency) as cost_original_currency,
             sum(conversion_value_original_currency) as conversion_value_original_currency,
